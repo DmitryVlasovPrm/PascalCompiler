@@ -1,18 +1,8 @@
 #pragma once
 
 #include "Variant.h"
-#include <set>
-#include <string>
 
-set <string> Operators = { "<=", "<>", ">=", ">", "<", ":=", ":", "+", "-", "*", "*)", "/", "=", "(", "(*", ")",
-							"{", "}", "'", "[", "]", ".", "..", ",", "^", ";" };
-
-set <string> ReservedWords = { "if", "do", "of", "or", "in", "to", "end", "var", "div", "and", "not", "for", "mod", "nil",
-								"set", "then", "else", "case", "file", "goto", "type", "with", "read", "begin", "while", "array",
-								"const", "label", "until", "write", "readln", "downto", "packed", "record", "repeat", "program",
-								"writeln", "function", "procedure" };
-
-enum class TokenType
+enum class TokenTypeEnum
 {
 	Operator,
 	Identifier,
@@ -26,7 +16,7 @@ private:
 	int StartPosition;
 	int EndPosition;
 protected:
-	TokenType Type;
+	TokenTypeEnum Type;
 public:
 	Token(int lineNumber, int startPosition, int endPosition)
 	{
@@ -39,7 +29,7 @@ public:
 	int GetLineNumber() { return LineNumber; }
 	int GetStartPosition() { return StartPosition; }
 	int GetEndPosition() { return EndPosition; }
-	TokenType GetType() { return Type; }
+	TokenTypeEnum GetType() { return Type; }
 };
 
 class OperatorToken : public Token
@@ -51,7 +41,7 @@ public:
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = value;
-		Type = TokenType::Operator;
+		Type = TokenTypeEnum::Operator;
 	}
 	~OperatorToken() {}
 	string GetValue()
@@ -71,7 +61,7 @@ public:
 	{
 		Value = value;
 		IsReservedWord = isReservedWord;
-		Type = TokenType::Identifier;
+		Type = TokenTypeEnum::Identifier;
 	}
 	~IdentifierToken() {}
 	string GetValue()
@@ -89,52 +79,68 @@ public:
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new IntegerVariant(value);
-		Type = TokenType::Value;
+		Type = TokenTypeEnum::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, double value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new DoubleVariant(value);
-		Type = TokenType::Value;
+		Type = TokenTypeEnum::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, string value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new StringVariant(value);
-		Type = TokenType::Value;
+		Type = TokenTypeEnum::Value;
 	}
 
-	ValueToken(int lineNumber, int startPosition, int endPosition, int length, char value) :
+	ValueToken(int lineNumber, int startPosition, int endPosition, char value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new CharVariant(value);
-		Type = TokenType::Value;
+		Type = TokenTypeEnum::Value;
+	}
+
+	ValueToken(int lineNumber, int startPosition, int endPosition, bool value) :
+		Token(lineNumber, startPosition, endPosition)
+	{
+		Value = new BoolVariant(value);
+		Type = TokenTypeEnum::Value;
 	}
 
 	~ValueToken() {}
 	string GetValue()
 	{
 		string answer;
-		if (Value->GetType() == VariantType::integer)
+		if (Value->GetType() == VariantTypeEnum::integer)
 		{
 			int val = ((IntegerVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
-		if (Value->GetType() == VariantType::__identifier(double))
+
+		if (Value->GetType() == VariantTypeEnum::__identifier(double))
 		{
 			double val = ((DoubleVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
-		if (Value->GetType() == VariantType::__identifier(char))
+
+		if (Value->GetType() == VariantTypeEnum::__identifier(char))
 		{
 			char val = ((CharVariant*)(Value))->GetValue();
-			answer = to_string(val);
+			answer = string(1, val);
 		}
-		if (Value->GetType() == VariantType::__identifier(string))
+
+		if (Value->GetType() == VariantTypeEnum::__identifier(string))
 		{
-			answer = ((IntegerVariant*)(Value))->GetValue();
+			answer = ((StringVariant*)(Value))->GetValue();
+		}
+
+		if (Value->GetType() == VariantTypeEnum::boolean)
+		{
+			bool val = ((BoolVariant*)(Value))->GetValue();
+			answer = val ? "true" : "false";
 		}
 		return answer;
 	}
