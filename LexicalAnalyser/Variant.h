@@ -2,25 +2,17 @@
 
 #include <string>
 #include <iostream>
-using namespace std;
-
-enum class VariantTypeEnum
-{
-	integer,
-	__identifier(double),
-	__identifier(string),
-	__identifier(char),
-	boolean
-};
+#include "Constants.h"
+using namespace Constants;
 
 class Variant
 {
 protected:
-	VariantTypeEnum Type;
+	VariantType Type;
 public:
 	Variant() {}
 	virtual ~Variant() {}
-	VariantTypeEnum GetType() { return Type; }
+	VariantType GetType() { return Type; }
 };
 
 class IntegerVariant : public Variant
@@ -31,7 +23,7 @@ public:
 	IntegerVariant(int value)
 	{
 		Value = value;
-		Type = VariantTypeEnum::integer;
+		Type = VariantType::integer_type;
 	}
 	~IntegerVariant() {}
 	int GetValue() { return Value; }
@@ -45,7 +37,7 @@ public:
 	DoubleVariant(double value)
 	{
 		Value = value;
-		Type = VariantTypeEnum::__identifier(double);
+		Type = VariantType::double_type;
 	}
 	~DoubleVariant() {}
 	double GetValue() { return Value; }
@@ -59,7 +51,7 @@ public:
 	StringVariant(string value)
 	{
 		Value = value;
-		Type = VariantTypeEnum::__identifier(string);
+		Type = VariantType::string_type;
 	}
 	~StringVariant() {}
 	string GetValue() { return Value; }
@@ -73,7 +65,7 @@ public:
 	CharVariant(char value)
 	{
 		Value = value;
-		Type = VariantTypeEnum::__identifier(char);
+		Type = VariantType::char_type;
 	}
 	~CharVariant() {}
 	char GetValue() { return Value; }
@@ -87,7 +79,7 @@ public:
 	BoolVariant(bool value)
 	{
 		Value = value;
-		Type = VariantTypeEnum::boolean;
+		Type = VariantType::boolean_type;
 	}
 	~BoolVariant() {}
 	bool GetValue() { return Value; }

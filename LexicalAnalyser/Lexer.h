@@ -13,12 +13,12 @@ class Lexer
 private:
 	string FileName;
 	bool IsLastToken;
-	queue<Token*> Tokens;
-	vector<Error> AllErrors;
+	queue<unique_ptr<Token>> Tokens;
+	vector<unique_ptr<Error>> AllErrors;
 public:
 	Lexer(string fileName);
 	~Lexer();
 	void Start();
-	Token* GetToken();
-	vector<Error> GetLexicalErrors() { return AllErrors; }
+	unique_ptr<Token> GetToken();
+	vector<unique_ptr<Error>> GetLexicalErrors() { return move(AllErrors); }
 };

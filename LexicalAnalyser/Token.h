@@ -2,13 +2,6 @@
 
 #include "Variant.h"
 
-enum class TokenTypeEnum
-{
-	Operator,
-	Identifier,
-	Value
-};
-
 class Token
 {
 private:
@@ -16,7 +9,7 @@ private:
 	int StartPosition;
 	int EndPosition;
 protected:
-	TokenTypeEnum Type;
+	Constants::TokenType Type;
 public:
 	Token(int lineNumber, int startPosition, int endPosition)
 	{
@@ -25,48 +18,45 @@ public:
 		EndPosition = endPosition;
 	}
 	virtual ~Token() {}
-	virtual string GetValue() { return ""; }
 	int GetLineNumber() { return LineNumber; }
 	int GetStartPosition() { return StartPosition; }
 	int GetEndPosition() { return EndPosition; }
-	TokenTypeEnum GetType() { return Type; }
+	Constants::TokenType GetType() { return Type; }
 };
 
 class OperatorToken : public Token
 {
 private:
-	string Value;
+	TokenName Name;
 public:
-	OperatorToken(int lineNumber, int startPosition, int endPosition, string value) :
+	OperatorToken(int lineNumber, int startPosition, int endPosition, TokenName name) :
 		Token(lineNumber, startPosition, endPosition)
 	{
-		Value = value;
-		Type = TokenTypeEnum::Operator;
+		Name = name;
+		Type = Constants::TokenType::Operator;
 	}
 	~OperatorToken() {}
-	string GetValue()
+	TokenName GetName()
 	{
-		return Value;
+		return Name;
 	}
 };
 
 class IdentifierToken : public Token
 {
 private:
-	string Value;
-	bool IsReservedWord;
+	string Name;
 public:
-	IdentifierToken(int lineNumber, int startPosition, int endPosition, bool isReservedWord, string value) :
+	IdentifierToken(int lineNumber, int startPosition, int endPosition, string name) :
 		Token(lineNumber, startPosition, endPosition)
 	{
-		Value = value;
-		IsReservedWord = isReservedWord;
-		Type = TokenTypeEnum::Identifier;
+		Name = name;
+		Type = Constants::TokenType::Identifier;
 	}
 	~IdentifierToken() {}
-	string GetValue()
+	string GetName()
 	{
-		return Value;
+		return Name;
 	}
 };
 
@@ -79,65 +69,65 @@ public:
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new IntegerVariant(value);
-		Type = TokenTypeEnum::Value;
+		Type = Constants::TokenType::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, double value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new DoubleVariant(value);
-		Type = TokenTypeEnum::Value;
+		Type = Constants::TokenType::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, string value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new StringVariant(value);
-		Type = TokenTypeEnum::Value;
+		Type = Constants::TokenType::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, char value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new CharVariant(value);
-		Type = TokenTypeEnum::Value;
+		Type = Constants::TokenType::Value;
 	}
 
 	ValueToken(int lineNumber, int startPosition, int endPosition, bool value) :
 		Token(lineNumber, startPosition, endPosition)
 	{
 		Value = new BoolVariant(value);
-		Type = TokenTypeEnum::Value;
+		Type = TokenType::Value;
 	}
 
 	~ValueToken() {}
 	string GetValue()
 	{
 		string answer;
-		if (Value->GetType() == VariantTypeEnum::integer)
+		if (Value->GetType() == VariantType::integer_type)
 		{
 			int val = ((IntegerVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
 
-		if (Value->GetType() == VariantTypeEnum::__identifier(double))
+		if (Value->GetType() == VariantType::double_type)
 		{
 			double val = ((DoubleVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
 
-		if (Value->GetType() == VariantTypeEnum::__identifier(char))
+		if (Value->GetType() == VariantType::char_type)
 		{
 			char val = ((CharVariant*)(Value))->GetValue();
 			answer = string(1, val);
 		}
 
-		if (Value->GetType() == VariantTypeEnum::__identifier(string))
+		if (Value->GetType() == VariantType::string_type)
 		{
 			answer = ((StringVariant*)(Value))->GetValue();
 		}
 
-		if (Value->GetType() == VariantTypeEnum::boolean)
+		if (Value->GetType() == VariantType::boolean_type)
 		{
 			bool val = ((BoolVariant*)(Value))->GetValue();
 			answer = val ? "true" : "false";

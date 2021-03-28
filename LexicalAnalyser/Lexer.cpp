@@ -1,5 +1,4 @@
 #include "Lexer.h"
-#include "Constants.h"
 #include <cmath>
 
 Lexer::Lexer(string fileName)
@@ -50,8 +49,8 @@ void Lexer::Start()
 				if (curSymbol == '?' || curSymbol == '&' || curSymbol == '%')
 				{
 					string errorMsg = "Запрещенный символ";
-					Error error = Error(errorMsg, curLineNumber, i + 1, i + 1);
-					AllErrors.push_back(error);
+					unique_ptr<Error> error = make_unique<Error>(errorMsg, curLineNumber, i + 1, i + 1);
+					AllErrors.push_back(move(error));
 					continue;
 				}
 
@@ -80,14 +79,22 @@ void Lexer::Start()
 					if (curLexem == "true" or curLexem == "false")
 					{
 						bool value = curLexem == "true" ? true : false;
-						Token* curToken = new ValueToken(curLineNumber, curStartPosition + 1, i + 1, value);
-						Tokens.push(curToken);
+						unique_ptr<Token> curToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, i + 1, value);
+						Tokens.push(move(curToken));
 					}
 					else
 					{
-						bool isReservedWord = Constants::ReservedWords.find(curLexem) != Constants::ReservedWords.end();
-						Token* curToken = new IdentifierToken(curLineNumber, curStartPosition + 1, i + 1, isReservedWord, curLexem);
-						Tokens.push(curToken);
+						unique_ptr<Token> curToken;
+						auto it = KeyTokenName.find(curLexem);
+						if (it == KeyTokenName.end())
+						{
+							curToken = make_unique<IdentifierToken>(curLineNumber, curStartPosition + 1, i + 1, curLexem);
+						}
+						else
+						{
+							curToken = make_unique<OperatorToken>(curLineNumber, curStartPosition + 1, i + 1, it->second);
+						}
+						Tokens.push(move(curToken));
 					}
 					continue;
 				}
@@ -115,10 +122,10 @@ void Lexer::Start()
 							i++;
 							if (pointPos == i - 1)
 							{
-								Token* valToken = new ValueToken(curLineNumber, curStartPosition + 1, pointPos, curIntNumber);
-								Tokens.push(valToken);
-								Token* operToken = new OperatorToken(curLineNumber, pointPos + 1, i + 1, "..");
-								Tokens.push(operToken);
+								unique_ptr<Token> valToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, pointPos, curIntNumber);
+								Tokens.push(move(valToken));
+								unique_ptr<Token> operToken = make_unique<OperatorToken>(curLineNumber, pointPos + 1, i + 1, TokenName::points_tk);
+								Tokens.push(move(operToken));
 								isColon = true;
 								break;
 							}
@@ -159,21 +166,21 @@ void Lexer::Start()
 
 					if (isError && (errorMsg != "Значение превышает предел" || pointPos == -1))
 					{
-						Error error = Error(errorMsg, curLineNumber, curStartPosition + 1, i + 1);
-						AllErrors.push_back(error);
+						unique_ptr<Error> error = make_unique<Error>(errorMsg, curLineNumber, curStartPosition + 1, i + 1);
+						AllErrors.push_back(move(error));
 					}
 					else if (!isColon)
 					{
 						if (pointPos != -1)
 						{
 							double result = stod(strNumber);
-							Token* curToken = new ValueToken(curLineNumber, curStartPosition + 1, i + 1, result);
-							Tokens.push(curToken);
+							unique_ptr<Token> curToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, i + 1, result);
+							Tokens.push(move(curToken));
 						}
 						else
 						{
-							Token* curToken = new ValueToken(curLineNumber, curStartPosition + 1, i + 1, curIntNumber);
-							Tokens.push(curToken);
+							unique_ptr<Token> curToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, i + 1, curIntNumber);
+							Tokens.push(move(curToken));
 						}
 					}
 					continue;
@@ -195,13 +202,13 @@ void Lexer::Start()
 							if (curStr.length() == 1)
 							{
 								char ch = curStr[0];
-								Token* curToken = new ValueToken(curLineNumber, curStartPosition + 1, i + 1, ch);
-								Tokens.push(curToken);
+								unique_ptr<Token> curToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, i + 1, ch);
+								Tokens.push(move(curToken));
 							}
 							else
 							{
-								Token* curToken = new ValueToken(curLineNumber, curStartPosition + 1, i + 1, curStr);
-								Tokens.push(curToken);
+								unique_ptr<Token> curToken = make_unique<ValueToken>(curLineNumber, curStartPosition + 1, i + 1, curStr);
+								Tokens.push(move(curToken));
 							}
 							isTokenReceived = true;
 							break;
@@ -214,8 +221,8 @@ void Lexer::Start()
 
 					if (!isTokenReceived)
 					{
-						Error error = Error("Отсутствует закрывающий символ", curLineNumber, curStartPosition + 1, i + 1);
-						AllErrors.push_back(error);
+						unique_ptr<Error> error = make_unique<Error>("Отсутствует закрывающий символ", curLineNumber, curStartPosition + 1, i + 1);
+						AllErrors.push_back(move(error));
 					}
 					continue;
 				}
@@ -234,8 +241,9 @@ void Lexer::Start()
 						curOper += nextSymbol;
 					}
 
-					Token* curToken = new OperatorToken(curLineNumber, curStartPosition + 1, i + 1, curOper);
-					Tokens.push(curToken);
+					TokenName name = KeyTokenName.find(curOper)->second;
+					unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, curStartPosition + 1, i + 1, name);
+					Tokens.push(move(curToken));
 					continue;
 				}
 
@@ -252,8 +260,9 @@ void Lexer::Start()
 						curOper += nextSymbol;
 					}
 
-					Token* curToken = new OperatorToken(curLineNumber, curStartPosition + 1, i + 1, curOper);
-					Tokens.push(curToken);
+					TokenName name = KeyTokenName.find(curOper)->second;
+					unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, curStartPosition + 1, i + 1, name);
+					Tokens.push(move(curToken));
 					continue;
 				}
 
@@ -271,8 +280,9 @@ void Lexer::Start()
 						curOper += nextSymbol;
 					}
 
-					Token* curToken = new OperatorToken(curLineNumber, curStartPosition + 1, i + 1, curOper);
-					Tokens.push(curToken);
+					TokenName name = KeyTokenName.find(curOper)->second;
+					unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, curStartPosition + 1, i + 1, name);
+					Tokens.push(move(curToken));
 					continue;
 				}
 
@@ -290,18 +300,19 @@ void Lexer::Start()
 						curOper += nextSymbol;
 					}
 
-					Token* curToken = new OperatorToken(curLineNumber, curStartPosition + 1, i + 1, curOper);
-					Tokens.push(curToken);
+					TokenName name = KeyTokenName.find(curOper)->second;
+					unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, curStartPosition + 1, i + 1, name);
+					Tokens.push(move(curToken));
 					continue;
 				}
 
 				// Скобки, арифметические операторы и др символы
 				if (curSymbol == '+' || curSymbol == '-' || curSymbol == '*' || curSymbol == '=' ||
-					curSymbol == ';' || curSymbol == '^' || curSymbol == ',' ||
-					curSymbol == ')' || curSymbol == '[' || curSymbol == ']')
+					curSymbol == ';' || curSymbol == ',' || curSymbol == ')' || curSymbol == '[' || curSymbol == ']')
 				{
-					Token* curToken = new OperatorToken(curLineNumber, i + 1, i + 1, string(1, curSymbol));
-					Tokens.push(curToken);
+					TokenName name = KeyTokenName.find(string(1, curSymbol))->second;
+					unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, i + 1, i + 1, name);
+					Tokens.push(move(curToken));
 					continue;
 				}
 
@@ -314,8 +325,9 @@ void Lexer::Start()
 					}
 					else
 					{
-						Token* curToken = new OperatorToken(curLineNumber, i + 1, i + 1, string(1, curSymbol));
-						Tokens.push(curToken);
+						TokenName name = KeyTokenName.find(string(1, curSymbol))->second;
+						unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, i + 1, i + 1, name);
+						Tokens.push(move(curToken));
 					}
 					continue;
 				}
@@ -337,8 +349,9 @@ void Lexer::Start()
 					}
 					else
 					{
-						Token* curToken = new OperatorToken(curLineNumber, i + 1, i + 1, string(1, curSymbol));
-						Tokens.push(curToken);
+						TokenName name = KeyTokenName.find(string(1, curSymbol))->second;
+						unique_ptr<Token> curToken = make_unique<OperatorToken>(curLineNumber, i + 1, i + 1, name);
+						Tokens.push(move(curToken));
 					}
 					continue;
 				}
@@ -351,7 +364,7 @@ void Lexer::Start()
 
 Lexer::~Lexer() {}
 
-Token* Lexer::GetToken()
+unique_ptr<Token> Lexer::GetToken()
 {
 	if (IsLastToken && Tokens.empty())
 		return NULL;
@@ -359,7 +372,7 @@ Token* Lexer::GetToken()
 	while (Tokens.empty())
 		Sleep(2);
 
-	Token* curToken = Tokens.front();
+	unique_ptr<Token> curToken = move(Tokens.front());
 	Tokens.pop();
 	return curToken;
 }
