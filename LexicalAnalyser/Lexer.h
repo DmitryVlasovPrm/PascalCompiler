@@ -14,11 +14,11 @@ private:
 	string FileName;
 	bool IsLastToken;
 	queue<unique_ptr<Token>> Tokens;
-	vector<unique_ptr<Error>> AllErrors;
+	vector<unique_ptr<Error>> LexicalErrors;
 public:
 	Lexer(string fileName);
 	~Lexer();
 	void Start();
 	unique_ptr<Token> GetToken();
-	vector<unique_ptr<Error>> GetLexicalErrors() { return move(AllErrors); }
+	vector<unique_ptr<Error>> GetLexicalErrors() { return move(LexicalErrors); }
 };

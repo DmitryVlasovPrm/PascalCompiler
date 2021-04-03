@@ -23,10 +23,10 @@ public:
 	void ShowError()
 	{
 		if (StartPosition != EndPosition)
-			cout << "Ошибка: \"" << ErrorMsg << "\". Строка " << LineNumber << 
-			", символы " << StartPosition << " - " << EndPosition << "." << endl;
+			cout << ErrorMsg << " Строка " << LineNumber <<
+			", символы " << StartPosition <<" - " << EndPosition << "." << endl;
 		else
-			cout << "Ошибка: \"" << ErrorMsg << "\". Строка " << LineNumber <<
+			cout << ErrorMsg << " Строка " << LineNumber <<
 			", символ " << StartPosition << "." << endl;
 	}
 };

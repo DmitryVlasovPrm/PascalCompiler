@@ -48,9 +48,9 @@ void Lexer::Start()
 				// Запрещенные символы
 				if (curSymbol == '?' || curSymbol == '&' || curSymbol == '%')
 				{
-					string errorMsg = "Запрещенный символ";
+					string errorMsg = "Ошибка: запрещенный символ.";
 					unique_ptr<Error> error = make_unique<Error>(errorMsg, curLineNumber, i + 1, i + 1);
-					AllErrors.push_back(move(error));
+					LexicalErrors.push_back(move(error));
 					continue;
 				}
 
@@ -153,7 +153,7 @@ void Lexer::Start()
 									else
 									{
 										isError = true;
-										errorMsg = "Значение превышает предел";
+										errorMsg = "Лексическая ошибка: значение превышает предел.";
 									}
 								}
 							}
@@ -164,10 +164,10 @@ void Lexer::Start()
 						}
 					}
 
-					if (isError && (errorMsg != "Значение превышает предел" || pointPos == -1))
+					if (isError && (errorMsg != "Ошибка: значение превышает предел." || pointPos == -1))
 					{
 						unique_ptr<Error> error = make_unique<Error>(errorMsg, curLineNumber, curStartPosition + 1, i + 1);
-						AllErrors.push_back(move(error));
+						LexicalErrors.push_back(move(error));
 					}
 					else if (!isColon)
 					{
@@ -221,8 +221,8 @@ void Lexer::Start()
 
 					if (!isTokenReceived)
 					{
-						unique_ptr<Error> error = make_unique<Error>("Отсутствует закрывающий символ", curLineNumber, curStartPosition + 1, i + 1);
-						AllErrors.push_back(move(error));
+						unique_ptr<Error> error = make_unique<Error>("Ошибка: отсутствует закрывающий символ.", curLineNumber, curStartPosition + 1, i + 1);
+						LexicalErrors.push_back(move(error));
 					}
 					continue;
 				}
@@ -366,11 +366,12 @@ Lexer::~Lexer() {}
 
 unique_ptr<Token> Lexer::GetToken()
 {
-	if (IsLastToken && Tokens.empty())
-		return NULL;
-
 	while (Tokens.empty())
+	{
 		Sleep(2);
+		if (IsLastToken && Tokens.empty())
+			return NULL;
+	}
 
 	unique_ptr<Token> curToken = move(Tokens.front());
 	Tokens.pop();
