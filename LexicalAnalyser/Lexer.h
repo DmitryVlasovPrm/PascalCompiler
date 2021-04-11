@@ -18,6 +18,7 @@ private:
 public:
 	Lexer(string fileName);
 	~Lexer();
+
 	void Start();
 	unique_ptr<Token> GetToken();
 	vector<unique_ptr<Error>> GetLexicalErrors() { return move(LexicalErrors); }

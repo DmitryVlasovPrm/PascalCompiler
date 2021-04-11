@@ -1,45 +1,41 @@
 #pragma once
 
 #include "Variant.h"
+#include "Constants.h"
+using namespace Constants;
 
 class Token
 {
 private:
 	int LineNumber;
 	int StartPosition;
-	int EndPosition;
 protected:
-	Constants::TokenType Type;
+	TokenValue ValueType;
+	Constants::TokenType TokenType;
 public:
-	Token(int lineNumber, int startPosition, int endPosition)
+	Token(int lineNumber, int startPosition)
 	{
 		LineNumber = lineNumber;
 		StartPosition = startPosition;
-		EndPosition = endPosition;
 	}
 	virtual ~Token() {}
+
 	int GetLineNumber() { return LineNumber; }
 	int GetStartPosition() { return StartPosition; }
-	int GetEndPosition() { return EndPosition; }
-	Constants::TokenType GetType() { return Type; }
+	TokenValue GetValueType() { return ValueType; }
+	void SetValueType(TokenValue valueType) { ValueType = valueType; }
+	Constants::TokenType GetTokenType() { return TokenType; }
 };
 
 class OperatorToken : public Token
 {
-private:
-	TokenName Name;
 public:
-	OperatorToken(int lineNumber, int startPosition, int endPosition, TokenName name) :
-		Token(lineNumber, startPosition, endPosition)
+	OperatorToken(int lineNumber, int startPosition, TokenValue valueType) : Token(lineNumber, startPosition)
 	{
-		Name = name;
-		Type = Constants::TokenType::Operator;
+		ValueType = valueType;
+		TokenType = Constants::TokenType::Operator;
 	}
 	~OperatorToken() {}
-	TokenName GetName()
-	{
-		return Name;
-	}
 };
 
 class IdentifierToken : public Token
@@ -47,17 +43,19 @@ class IdentifierToken : public Token
 private:
 	string Name;
 public:
-	IdentifierToken(int lineNumber, int startPosition, int endPosition, string name) :
-		Token(lineNumber, startPosition, endPosition)
+	IdentifierToken(int lineNumber, int startPosition, string name) : Token(lineNumber, startPosition)
 	{
 		Name = name;
-		Type = Constants::TokenType::Identifier;
+		TokenType = Constants::TokenType::Identifier;
 	}
 	~IdentifierToken() {}
+
 	string GetName()
 	{
 		return Name;
 	}
+
+	bool operator<(const IdentifierToken& idToken) const { return Name < idToken.Name; }
 };
 
 class ValueToken : public Token
@@ -65,73 +63,74 @@ class ValueToken : public Token
 private:
 	Variant* Value;
 public:
-	ValueToken(int lineNumber, int startPosition, int endPosition, int value) :
-		Token(lineNumber, startPosition, endPosition)
+	ValueToken(int lineNumber, int startPosition, int value) : Token(lineNumber, startPosition)
 	{
 		Value = new IntegerVariant(value);
-		Type = Constants::TokenType::Value;
+		ValueType = TokenValue::integer_tk;
+		TokenType = Constants::TokenType::Value;
 	}
 
-	ValueToken(int lineNumber, int startPosition, int endPosition, double value) :
-		Token(lineNumber, startPosition, endPosition)
+	ValueToken(int lineNumber, int startPosition, double value) : Token(lineNumber, startPosition)
 	{
 		Value = new DoubleVariant(value);
-		Type = Constants::TokenType::Value;
+		ValueType = TokenValue::double_tk;
+		TokenType = Constants::TokenType::Value;
 	}
 
-	ValueToken(int lineNumber, int startPosition, int endPosition, string value) :
-		Token(lineNumber, startPosition, endPosition)
+	ValueToken(int lineNumber, int startPosition, string value) : Token(lineNumber, startPosition)
 	{
 		Value = new StringVariant(value);
-		Type = Constants::TokenType::Value;
+		ValueType = TokenValue::string_tk;
+		TokenType = Constants::TokenType::Value;
 	}
 
-	ValueToken(int lineNumber, int startPosition, int endPosition, char value) :
-		Token(lineNumber, startPosition, endPosition)
+	ValueToken(int lineNumber, int startPosition, char value) : Token(lineNumber, startPosition)
 	{
 		Value = new CharVariant(value);
-		Type = Constants::TokenType::Value;
+		ValueType = TokenValue::char_tk;
+		TokenType = Constants::TokenType::Value;
 	}
 
-	ValueToken(int lineNumber, int startPosition, int endPosition, bool value) :
-		Token(lineNumber, startPosition, endPosition)
+	ValueToken(int lineNumber, int startPosition, bool value) : Token(lineNumber, startPosition)
 	{
 		Value = new BoolVariant(value);
-		Type = TokenType::Value;
+		ValueType = TokenValue::boolean_tk;
+		TokenType = TokenType::Value;
 	}
 
 	~ValueToken() {}
 	string GetValue()
 	{
 		string answer;
-		if (Value->GetType() == VariantType::integer_type)
+		if (ValueType == TokenValue::integer_tk)
 		{
 			int val = ((IntegerVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
 
-		if (Value->GetType() == VariantType::double_type)
+		if (ValueType == TokenValue::double_tk)
 		{
 			double val = ((DoubleVariant*)(Value))->GetValue();
 			answer = to_string(val);
 		}
 
-		if (Value->GetType() == VariantType::char_type)
+		if (ValueType == TokenValue::char_tk)
 		{
 			char val = ((CharVariant*)(Value))->GetValue();
 			answer = string(1, val);
 		}
 
-		if (Value->GetType() == VariantType::string_type)
+		if (ValueType == TokenValue::string_tk)
 		{
 			answer = ((StringVariant*)(Value))->GetValue();
 		}
 
-		if (Value->GetType() == VariantType::boolean_type)
+		if (ValueType == TokenValue::boolean_tk)
 		{
 			bool val = ((BoolVariant*)(Value))->GetValue();
 			answer = val ? "true" : "false";
 		}
+
 		return answer;
 	}
 };

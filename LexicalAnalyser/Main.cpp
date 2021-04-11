@@ -1,37 +1,20 @@
-#include "Lexer.h"
-#include <algorithm>
-#include <set>
+#include "Main.h"
 
 string file = "semantic.txt";
 Lexer lexer = Lexer(file);
 unique_ptr<Token> curToken;
 int lineNumber = 0, startPos = 0;
-vector<unique_ptr<Error>> SyntacticErrors;
+vector<unique_ptr<Error>> SynSemErrors;
+map<IdentifierToken, TokenValue> CustomTypes;
+set<IdentifierToken> DefinedVariables;
 
-// Функции для синтаксиса
-void Program();
-void Block();
-void VarPart();
-void VarDeclaration();
-void CompoundStatement();
-void Statement();
-void SimpleExpression();
-void Item();
-void Multiplier();
-
-// Вспомогательные функции
-bool IsThisOperatorName(TokenName tName);
-bool IsThisOperatorName(set<TokenName> tNames);
-bool SkipToVariousTokens(set<TokenName> sNames, set<Constants::TokenType> sTypes, set<TokenName> fNames);
-string GetKeyByValue(TokenName tName);
-void GetToken();
-
-void AcceptIdent()
+IdentifierToken AcceptIdent()
 {
-	if (curToken != NULL && curToken->GetType() == TokenType::Identifier)
+	if (curToken != NULL && curToken->GetTokenType() == TokenType::Identifier)
 	{
-		GetToken();
-		return;
+		auto ident = *(IdentifierToken*)curToken.get();
+		GetNextToken();
+		return ident;
 	}
 	else
 	{
@@ -39,41 +22,50 @@ void AcceptIdent()
 	}
 }
 
-void AcceptOper(TokenName tokenName)
+void AcceptOper(TokenValue tokenValue)
 {
-	if (curToken != NULL && IsThisOperatorName(tokenName))
+	if (IsThisOperatorValue(tokenValue))
 	{
-		GetToken();
+		GetNextToken();
 		return;
 	}
 	else
 	{
-		throw invalid_argument("Ожидался оператор: \"" + GetKeyByValue(tokenName) + "\".");
+		throw invalid_argument("Ожидался оператор: \"" + GetKeyByValue(tokenValue) + "\".");
 	}
 }
 
-void AcceptOper(vector<TokenName> tokenNames)
+TokenValue AcceptType()
 {
-	if (curToken != NULL && curToken->GetType() == TokenType::Operator)
+	auto tokenType = curToken->GetTokenType();
+	if (curToken != NULL && tokenType == TokenType::Operator)
 	{
-		for (TokenName name : tokenNames)
+		auto it = StandardTypes.find(curToken->GetValueType());
+		if (it != StandardTypes.end())
 		{
-			if (((OperatorToken*)curToken.get())->GetName() == name)
-			{
-				GetToken();
-				return;
-			}
+			GetNextToken();
+			return *it;
 		}
 	}
 
-	string operatorsStr = "";
-	for (TokenName name : tokenNames)
+	if (curToken != NULL && tokenType == TokenType::Identifier)
 	{
-		if (name == tokenNames[tokenNames.size() - 1])
-			operatorsStr += GetKeyByValue(name);
-		else
-			operatorsStr += "\"" + GetKeyByValue(name) + "\", ";
+		auto it = CustomTypes.find(*(IdentifierToken*)curToken.get());
+		if (it != CustomTypes.end())
+		{
+			GetNextToken();
+			return (*it).second;
+		}
+	}
 
+	string operatorsStr = StandardTypesStr;
+	for (auto it = CustomTypes.begin(); it != CustomTypes.end(); it++)
+	{
+		operatorsStr += ", ";
+		if (next(it) == CustomTypes.end())
+			operatorsStr += "\"" + ((IdentifierToken)(*it).first).GetName() + "\"";
+		else
+			operatorsStr += "\"" + ((IdentifierToken)(*it).first).GetName() + "\", ";
 	}
 	throw invalid_argument("Ожидался один из операторов: " + operatorsStr + ".");
 }
@@ -81,45 +73,117 @@ void AcceptOper(vector<TokenName> tokenNames)
 // Программа
 void Program()
 {
-	if (curToken == NULL)
-		return;
-
-	// Пропускаем символы для того, чтобы найти program
-	if (!IsThisOperatorName(TokenName::program_tk))
-	{
-		int startPos = curToken->GetStartPosition();
-		unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		if (!SkipToVariousTokens(set<TokenName> {TokenName::program_tk}, set<Constants::TokenType>(), set<TokenName> {TokenName::var_tk, TokenName::begin_tk}))
-			return;
-	}
-
 	try
 	{
-		AcceptOper(TokenName::program_tk);
+		if (curToken == NULL)
+			return;
+
+		// Пропускаем символы для того, чтобы найти program
+		if (!IsThisOperatorValue(TokenValue::program_tk))
+		{
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue> {TokenValue::program_tk}, set<Constants::TokenType>(), set<TokenValue> {TokenValue::type_tk, TokenValue::var_tk, TokenValue::begin_tk}))
+				goto block;
+		}
+		AcceptOper(TokenValue::program_tk);
 		// Имя
 		AcceptIdent();
-		AcceptOper(TokenName::semicolon_tk);
+		AcceptOper(TokenValue::semicolon_tk);
 		// Блок
+	block:
 		Block();
-		AcceptOper(TokenName::point_tk);
+		AcceptOper(TokenValue::point_tk);
 	}
 	catch (const invalid_argument& ex)
 	{
 		// Пропустить символы до CompoundStatement
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в разделе \"Программа\". " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::begin_tk});
+		auto error = make_unique<Error>("Ошибка в разделе \"Программа\". " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
 	}
 }
 
 // Блок
 void Block()
 {
+	// Раздел типов
+	TypePart();
 	// Раздел переменных
 	VarPart();
 	// Раздел операторов (составной оператор)
 	CompoundStatement();
+}
+
+// Раздел типов
+void TypePart()
+{
+	try
+	{
+		if (curToken == NULL)
+			return;
+
+		// Если нет данного раздела
+		if (IsThisOperatorValue(TokenValue::var_tk))
+			return;
+
+		// Пропускаем символы для того, чтобы найти type
+		if (!IsThisOperatorValue(TokenValue::type_tk))
+		{
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue> {TokenValue::type_tk}, set<Constants::TokenType>(), set<TokenValue> {TokenValue::var_tk, TokenValue::begin_tk}))
+				return;
+		}
+
+		// В том случае, если type найден
+		GetNextToken();
+		do
+		{
+			// Определение типа
+			TypeDeclaration();
+			AcceptOper(TokenValue::semicolon_tk);
+		} while (curToken != NULL && curToken->GetTokenType() == TokenType::Identifier);
+	}
+	catch (const invalid_argument& ex)
+	{
+		// Пропустить символы до Раздела переменных или Составного оператора
+		auto error = make_unique<Error>("Ошибка в разделе типов. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::var_tk, TokenValue::begin_tk});
+	}
+}
+
+// Определение типа
+void TypeDeclaration()
+{
+	try
+	{
+		if (curToken == NULL)
+			return;
+
+		// Пропускаем символы для того, чтобы найти идентификатор (имя)
+		if (curToken->GetTokenType() != TokenType::Identifier)
+		{
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType> {TokenType::Identifier}, set<TokenValue> {TokenValue::semicolon_tk}))
+				return;
+		}
+
+		// Имя
+		auto customTypeName = AcceptIdent();
+		AcceptOper(TokenValue::equal_tk);
+		// Тип
+		auto type = AcceptType();
+		CustomTypes.insert(pair<IdentifierToken, TokenValue>(customTypeName, type));
+	}
+	catch (const invalid_argument& ex)
+	{
+		// Пропустить символы до точки с запятой
+		auto error = make_unique<Error>("Ошибка в разделе определения типа. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::semicolon_tk});
+	}
 }
 
 // Раздел переменных
@@ -131,34 +195,33 @@ void VarPart()
 			return;
 
 		// Если нет данного раздела
-		if (IsThisOperatorName(TokenName::begin_tk))
+		if (IsThisOperatorValue(TokenValue::begin_tk))
 			return;
 
 		// Пропускаем символы для того, чтобы найти var
-		if (!IsThisOperatorName(TokenName::var_tk))
+		if (!IsThisOperatorValue(TokenValue::var_tk))
 		{
-			int startPos = curToken->GetStartPosition();
-			unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-			SyntacticErrors.push_back(move(error));
-			if (!SkipToVariousTokens(set<TokenName> {TokenName::var_tk}, set<Constants::TokenType>(), set<TokenName> {TokenName::begin_tk, TokenName::point_tk}))
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue> {TokenValue::var_tk}, set<Constants::TokenType>(), set<TokenValue> {TokenValue::begin_tk}))
 				return;
 		}
 
 		// В том случае, если var найден
-		GetToken();
+		GetNextToken();
 		do
 		{
 			// Описание однотипных переменных
 			VarDeclaration();
-			AcceptOper(TokenName::semicolon_tk);
-		} while (curToken->GetType() == TokenType::Identifier);
+			AcceptOper(TokenValue::semicolon_tk);
+		} while (curToken != NULL && curToken->GetTokenType() == TokenType::Identifier);
 	}
 	catch (const invalid_argument& ex)
 	{
-		// Пропустить символы до CompoundStatement
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в разделе переменных. " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::begin_tk});
+		// Пропустить символы до Составного оператора
+		auto error = make_unique<Error>("Ошибка в разделе переменных. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::begin_tk});
 	}
 }
 
@@ -171,33 +234,50 @@ void VarDeclaration()
 			return;
 
 		// Пропускаем символы для того, чтобы найти идентификатор (имя)
-		if (curToken->GetType() != TokenType::Identifier)
+		if (curToken->GetTokenType() != TokenType::Identifier)
 		{
-			int startPos = curToken->GetStartPosition();
-			unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-			SyntacticErrors.push_back(move(error));
-			if (!SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType> {TokenType::Identifier}, set<TokenName> {TokenName::semicolon_tk}))
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType> {TokenType::Identifier}, set<TokenValue> {TokenValue::semicolon_tk}))
 				return;
 		}
 
 		// Имя
-		AcceptIdent();
-		while (IsThisOperatorName(TokenName::comma_tk))
+		auto var = AcceptIdent();
+		vector<IdentifierToken> varNames = { var };
+		while (IsThisOperatorValue(TokenValue::comma_tk))
 		{
-			GetToken();
+			GetNextToken();
 			// Имя
-			AcceptIdent();
+			var = AcceptIdent();
+			varNames.push_back(var);
 		}
-		AcceptOper(TokenName::colon_tk);
+		AcceptOper(TokenValue::colon_tk);
 		// Тип (простой тип)
-		AcceptOper(vector<TokenName>{TokenName::integer_tk, TokenName::double_tk, TokenName::char_tk, TokenName::string_tk, TokenName::boolean_tk});
+		auto type = AcceptType();
+
+		// Запоминаем определенные переменные и их типы
+		while (!varNames.empty())
+		{
+			auto curVar = varNames.back();
+			varNames.pop_back();
+
+			curVar.SetValueType(type);
+			if (DefinedVariables.find(curVar) != DefinedVariables.end())
+			{
+				auto error = make_unique<Error>("Переменная \"" + curVar.GetName() + "\" уже определена.", curVar.GetLineNumber(), curVar.GetStartPosition());
+				SynSemErrors.push_back(move(error));
+				continue;
+			}
+			DefinedVariables.insert(curVar);
+		}
 	}
 	catch (const invalid_argument& ex)
 	{
 		// Пропустить символы до точки с запятой
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в разделе описания однотипных переменных. " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::semicolon_tk});
+		auto error = make_unique<Error>("Ошибка в разделе описания однотипных переменных. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::semicolon_tk});
 	}
 }
 
@@ -210,32 +290,31 @@ void CompoundStatement()
 			return;
 
 		// Пропускаем символы для того, чтобы найти begin
-		if (!IsThisOperatorName(TokenName::begin_tk))
+		if (!IsThisOperatorValue(TokenValue::begin_tk))
 		{
-			int startPos = curToken->GetStartPosition();
-			unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-			SyntacticErrors.push_back(move(error));
-			if (!SkipToVariousTokens(set<TokenName> {TokenName::begin_tk}, set<Constants::TokenType>(), set<TokenName>{TokenName::point_tk}))
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue> {TokenValue::begin_tk}, set<Constants::TokenType>(), set<TokenValue>{TokenValue::point_tk}))
 				return;
 		}
 
-		AcceptOper(TokenName::begin_tk);
+		AcceptOper(TokenValue::begin_tk);
 		// Оператор
 		Statement();
-		while (IsThisOperatorName(TokenName::semicolon_tk))
+		while (IsThisOperatorValue(TokenValue::semicolon_tk))
 		{
-			GetToken();
+			GetNextToken();
 			// Оператор
 			Statement();
 		}
-		AcceptOper(TokenName::end_tk);
+		AcceptOper(TokenValue::end_tk);
 	}
 	catch (const invalid_argument& ex)
 	{
 		// Пропустить символы до точки
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в разделе \"Составной оператор\". " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::point_tk});
+		auto error = make_unique<Error>("Ошибка в разделе \"Составной оператор\". " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::point_tk});
 	}
 }
 
@@ -248,183 +327,238 @@ void Statement()
 			return;
 
 		// Пустой оператор
-		if (IsThisOperatorName(TokenName::end_tk))
+		if (IsThisOperatorValue(TokenValue::end_tk))
 			return;
 
-		// Пропускаем символы для того, чтобы найти идентификатор (переменная) или оператор begin
-		if (curToken->GetType() != TokenType::Identifier && !IsThisOperatorName(TokenName::begin_tk))
+		// Пропускаем символы для того, чтобы найти идентификатор (переменная) или begin, if, while
+		if (curToken->GetTokenType() != TokenType::Identifier &&
+			!IsThisOperatorValue(set<TokenValue> {TokenValue::begin_tk, TokenValue::if_tk, TokenValue::while_tk}))
 		{
-			int startPos = curToken->GetStartPosition();
-			unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-			SyntacticErrors.push_back(move(error));
-			if (!SkipToVariousTokens(set<TokenName> {TokenName::begin_tk}, set<Constants::TokenType> {TokenType::Identifier}, set<TokenName> {TokenName::semicolon_tk, TokenName::end_tk}))
+			auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+			SynSemErrors.push_back(move(error));
+			if (!SkipToVariousTokens(set<TokenValue> {TokenValue::begin_tk, TokenValue::if_tk, TokenValue::while_tk},
+				set<Constants::TokenType> {TokenType::Identifier}, set<TokenValue> {TokenValue::semicolon_tk, TokenValue::end_tk}))
 				return;
 		}
 
 		// Простой оператор (оператор присваивания)
-		if (curToken->GetType() == TokenType::Identifier) // Переменная
+		if (curToken->GetTokenType() == TokenType::Identifier) // Переменная
 		{
-			GetToken();
-			AcceptOper(TokenName::assignation_tk);
-			// Выражение (простое выражение)
-			SimpleExpression();
+			auto leftType = CheckIdentifier();
+			GetNextToken();
+			auto operation = *curToken;
+			AcceptOper(TokenValue::assignation_tk);
+			// Выражение
+			auto rightType = Expression();
+			CompareTypes(leftType, rightType, operation);
 		}
-		// Сложный оператор
-		else
+
+		// Условие if, цикл while, сложный оператор
+		if (curToken->GetTokenType() == TokenType::Operator)
 		{
 			// Составной оператор
-			CompoundStatement();
+			if (curToken->GetValueType() == TokenValue::begin_tk)
+				CompoundStatement();
+			// Условный оператор
+			if (curToken->GetValueType() == TokenValue::if_tk)
+				IfConditional();
+			// Цикл while
+			if (curToken->GetValueType() == TokenValue::while_tk)
+				WhileCycle();
 		}
 	}
 	catch (const invalid_argument& ex)
 	{
 		// Пропустить символы до точки с запятой или end
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в разделе \"Оператор\". " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::semicolon_tk, TokenName::end_tk});
+		auto error = make_unique<Error>("Ошибка в разделе \"Оператор\". " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::semicolon_tk, TokenValue::end_tk});
 	}
+}
+
+// Выражение
+TokenValue Expression()
+{
+	// Простое выражение
+	auto leftType = SimpleExpression();
+	// Операция отношения
+	if (IsThisOperatorValue(set<TokenValue> {TokenValue::equal_tk, TokenValue::not_equal_tk,
+		TokenValue::less_tk, TokenValue::less_equal_tk, TokenValue::bigger_tk, TokenValue::bigger_equal_tk}))
+	{
+		auto operation = *curToken;
+		GetNextToken();
+		auto rightType = SimpleExpression();
+		return CompareTypes(leftType, rightType, operation);
+	}
+	return leftType;
 }
 
 // Простое выражение
-void SimpleExpression()
+TokenValue SimpleExpression()
 {
+	auto curType = TokenValue::none_tk;
 	if (curToken == NULL)
-		return;
+		return curType;
 
 	// Пропускаем символы для того, чтобы найти +, - или слагаемое
-	auto type = curToken->GetType();
-	if (!IsThisOperatorName(TokenName::plus_tk) && !IsThisOperatorName(TokenName::minus_tk) && !IsThisOperatorName(TokenName::round_open_bracket_tk) && type != TokenType::Identifier && type != TokenType::Value)
+	auto type = curToken->GetTokenType();
+	if (!IsThisOperatorValue(set<TokenValue> {TokenValue::plus_tk, TokenValue::minus_tk, TokenValue::round_open_bracket_tk,
+		TokenValue::not_tk}) && type != TokenType::Identifier && type != TokenType::Value)
 	{
-		int startPos = curToken->GetStartPosition();
-		unique_ptr<Error> error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		if (!SkipToVariousTokens(set<TokenName> {TokenName::plus_tk, TokenName::minus_tk, TokenName::round_open_bracket_tk}, set<Constants::TokenType> {TokenType::Identifier, TokenType::Value}, set<TokenName> {TokenName::semicolon_tk, TokenName::end_tk}))
-			return;
+		auto error = make_unique<Error>("Ошибка: недопустимые токены.", curToken->GetLineNumber(), curToken->GetStartPosition());
+		SynSemErrors.push_back(move(error));
+		if (!SkipToVariousTokens(set<TokenValue> {TokenValue::plus_tk, TokenValue::minus_tk, TokenValue::round_open_bracket_tk,
+			TokenValue::not_tk}, set<Constants::TokenType> {TokenType::Identifier, TokenType::Value}, set<TokenValue> {TokenValue::semicolon_tk, TokenValue::end_tk}))
+			return curType;
 	}
 
 	// Знак или без знака
-	if (IsThisOperatorName(TokenName::plus_tk) || IsThisOperatorName(TokenName::minus_tk))
-		GetToken();
+	if (IsThisOperatorValue(set<TokenValue> {TokenValue::plus_tk, TokenValue::minus_tk}))
+	{
+		GetNextToken();
+	}
 
 	// Слагаемое
-	Item();
+	curType = Item();
 	// Аддитивная операция
-	while (IsThisOperatorName(TokenName::plus_tk) || IsThisOperatorName(TokenName::minus_tk))
+	while (IsThisOperatorValue(set<TokenValue> {TokenValue::plus_tk, TokenValue::minus_tk, TokenValue::or_tk}))
 	{
-		GetToken();
-		Item();
+		auto operation = *curToken;
+		GetNextToken();
+		auto nextType = Item();
+		curType = CompareTypes(curType, nextType, operation);
 	}
+	return curType;
 }
 
 // Слагаемое
-void Item()
+TokenValue Item()
 {
+	auto curType = TokenValue::none_tk;
 	if (curToken == NULL)
-		return;
+		return curType;
 
 	// Множитель
-	Multiplier();
+	curType = Multiplier();
 	// Мультипликативная операция
-	while (IsThisOperatorName(TokenName::mult_tk) || IsThisOperatorName(TokenName::div_tk))
+	while (IsThisOperatorValue(set<TokenValue> {TokenValue::mult_tk, TokenValue::div_tk, TokenValue::int_div_tk,
+		TokenValue::mod_tk, TokenValue::and_tk}))
 	{
-		GetToken();
+		auto operation = *curToken;
+		GetNextToken();
 		// Множитель
-		Multiplier();
+		auto nextType = Multiplier();
+		curType = CompareTypes(curType, nextType, operation);
 	}
+	return curType;
 }
 
 // Множитель
-void Multiplier()
+TokenValue Multiplier()
 {
 	try
 	{
 		if (curToken == NULL)
-			return;
+			return TokenValue::none_tk;
 
-		auto tokenType = curToken->GetType();
-		// Переменная константа без знака
-		if (tokenType == TokenType::Identifier || tokenType == TokenType::Value)
+		auto tokenType = curToken->GetTokenType();
+		// Переменная
+		if (tokenType == TokenType::Identifier)
 		{
-			GetToken();
-			return;
+			auto type = CheckIdentifier();
+			GetNextToken();
+			return type;
 		}
-		else
+		// Константа без знака
+		if (tokenType == TokenType::Value)
 		{
-			// (Выражение (простое выражение))
-			AcceptOper(TokenName::round_open_bracket_tk);
-			SimpleExpression();
-			AcceptOper(TokenName::round_close_bracket_tk);
+			auto type = curToken->GetValueType();
+			GetNextToken();
+			return type;
+		}
+		// (<выражение>) или not <множитель>
+		if (tokenType == TokenType::Operator)
+		{
+			if (curToken->GetValueType() == TokenValue::round_open_bracket_tk)
+			{
+				// Выражение
+				GetNextToken();
+				auto type = Expression();
+				AcceptOper(TokenValue::round_close_bracket_tk);
+				return type;
+			}
+			else
+			{
+				auto notOper = *curToken;
+				AcceptOper(TokenValue::not_tk);
+				auto type = Multiplier();
+				if (type != TokenValue::boolean_tk)
+				{
+					auto error = make_unique<Error>("Несовместимость типов для операции \"not\".", notOper.GetLineNumber(), notOper.GetStartPosition());
+					SynSemErrors.push_back(move(error));
+					return TokenValue::none_tk;
+				}
+				return type;
+			}
 		}
 	}
 	catch (const invalid_argument& ex)
 	{
 		// Пропустить символы до умножения, деления, плюса, минуса, end, (, точка с запятой
-		unique_ptr<Error> error = make_unique<Error>("Ошибка в множителе. " + (string)ex.what(), lineNumber, startPos, startPos);
-		SyntacticErrors.push_back(move(error));
-		SkipToVariousTokens(set<TokenName>(), set<Constants::TokenType>(), set<TokenName> {TokenName::mult_tk, TokenName::div_tk,
-			TokenName::plus_tk, TokenName::minus_tk, TokenName::end_tk, TokenName::round_open_bracket_tk, TokenName::semicolon_tk});
+		auto error = make_unique<Error>("Ошибка в множителе. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::mult_tk, TokenValue::div_tk,
+			TokenValue::plus_tk, TokenValue::minus_tk, TokenValue::end_tk, TokenValue::round_open_bracket_tk, TokenValue::semicolon_tk});
 	}
 }
 
-// Проверка имени оператора (упрощает код)
-bool IsThisOperatorName(TokenName tName)
+// Условный оператор
+void IfConditional()
 {
-	if (curToken->GetType() == TokenType::Operator && ((OperatorToken*)curToken.get())->GetName() == tName)
-		return true;
-	else
-		return false;
-}
-
-// Проверка нескольких имен операторов (упрощает код)
-bool IsThisOperatorName(set<TokenName> tNames)
-{
-	if (curToken->GetType() == TokenType::Operator)
+	try
 	{
-		auto name = ((OperatorToken*)curToken.get())->GetName();
-		if (tNames.find(name) != tNames.end())
-			return true;
-		else
-			return false;
-	}
-}
-
-// Делаем пропуски до определенных токенов или их типов (учитываем внешние символы)
-bool SkipToVariousTokens(set<TokenName> sNames, set<Constants::TokenType> sTypes, set<TokenName> fNames)
-{
-	while (true)
-	{
-		if (curToken == NULL)
-			return false;
-
-		if (IsThisOperatorName(sNames))
-			return true;
-
-		if (sTypes.size() != 0 && sTypes.find(curToken->GetType()) == sTypes.end())
-			return true;
-
-		if (IsThisOperatorName(fNames))
-			return false;
-
-		GetToken();
-	}
-}
-
-// Получаем строковое значение оператора
-string GetKeyByValue(TokenName tName)
-{
-	string key = "";
-	for (auto& item : KeyTokenName)
-	{
-		if (item.second == tName)
+		GetNextToken();
+		Expression();
+		AcceptOper(TokenValue::then_tk);
+		Statement();
+		if (curToken->GetValueType() == TokenValue::else_tk)
 		{
-			key = item.first;
-			break;
+			GetNextToken();
+			Statement();
 		}
 	}
-	return key;
+	catch (const invalid_argument& ex)
+	{
+		// Пропустить символы до умножения, деления, плюса, минуса, end, (, точка с запятой
+		auto error = make_unique<Error>("Ошибка в условном операторе. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::semicolon_tk, TokenValue::end_tk});
+	}
 }
 
-void GetToken()
+// Цикл while
+void WhileCycle()
+{
+	try
+	{
+		GetNextToken();
+		Expression();
+		AcceptOper(TokenValue::do_tk);
+		Statement();
+	}
+	catch (const invalid_argument& ex)
+	{
+		// Пропустить символы до умножения, деления, плюса, минуса, end, (, точка с запятой
+		auto error = make_unique<Error>("Ошибка в цикле с предусловием. " + (string)ex.what(), lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::semicolon_tk, TokenValue::end_tk});
+	}
+}
+
+#pragma region Вспомогательные функции
+
+// Получаем следующий токен
+void GetNextToken()
 {
 	curToken = lexer.GetToken();
 	if (curToken != NULL)
@@ -434,17 +568,177 @@ void GetToken()
 	}
 }
 
-//////////////////////////////////////////////
+// Проверка имени оператора (упрощает код)
+bool IsThisOperatorValue(TokenValue tValue)
+{
+	if (curToken != NULL && curToken->GetTokenType() == TokenType::Operator && curToken->GetValueType() == tValue)
+		return true;
+	else
+		return false;
+}
+
+// Проверка нескольких имен операторов (упрощает код)
+bool IsThisOperatorValue(set<TokenValue> tValues)
+{
+	if (curToken != NULL && curToken->GetTokenType() == TokenType::Operator && tValues.find(curToken->GetValueType()) != tValues.end())
+		return true;
+	else
+		return false;
+}
+
+// Делаем пропуски до определенных токенов или их типов (учитываем внешние символы)
+bool SkipToVariousTokens(set<TokenValue> sValues, set<Constants::TokenType> sTypes, set<TokenValue> fValues)
+{
+	while (true)
+	{
+		if (curToken == NULL)
+			return false;
+
+		if (IsThisOperatorValue(sValues))
+			return true;
+
+		if (sTypes.find(curToken->GetTokenType()) != sTypes.end())
+			return true;
+
+		if (IsThisOperatorValue(fValues))
+			return false;
+
+		GetNextToken();
+	}
+}
+
+// Объявлен ли идентификатор и берем его тип
+TokenValue CheckIdentifier()
+{
+	auto type = TokenValue::none_tk;
+	auto ident = *(IdentifierToken*)(curToken.get());
+	auto iterator = DefinedVariables.find(ident);
+	if (iterator == DefinedVariables.end())
+	{
+		auto error = make_unique<Error>("Идентификатор \"" + ident.GetName() + "\" не определен.", lineNumber, startPos);
+		SynSemErrors.push_back(move(error));
+	}
+	else
+	{
+		auto ident = *iterator;
+		type = ident.GetValueType();
+	}
+	return type;
+}
+
+// Проверяем соответствие типов
+TokenValue CompareTypes(TokenValue leftPart, TokenValue rightPart, Token operationToken)
+{
+	auto operation = operationToken.GetValueType();
+	if (operation == TokenValue::assignation_tk)
+	{
+		if (leftPart != TokenValue::none_tk && rightPart != TokenValue::none_tk && leftPart != rightPart)
+		{
+			if (leftPart == TokenValue::string_tk && rightPart == TokenValue::char_tk)
+				return leftPart;
+			string leftKey = GetKeyByValue(leftPart);
+			string rightKey = GetKeyByValue(rightPart);
+			unique_ptr<Error> error = make_unique<Error>("Несовместимость типов. В правой части ожидался тип \"" + leftKey + "\", но был получен \"" + rightKey + "\".", operationToken.GetLineNumber(), operationToken.GetStartPosition());
+			SynSemErrors.push_back(move(error));
+		}
+		return leftPart;
+	}
+
+	// Определение типов операции
+	bool areArithmeticOperations = false;
+	bool areRelationshipOperations = false;
+	bool areLogicalOperations = false;
+	if (operation == TokenValue::plus_tk || operation == TokenValue::minus_tk || operation == TokenValue::mult_tk ||
+		operation == TokenValue::div_tk || operation == TokenValue::int_div_tk || operation == TokenValue::mod_tk)
+		areArithmeticOperations = true;
+	else if (operation == TokenValue::equal_tk || operation == TokenValue::not_equal_tk || operation == TokenValue::less_tk ||
+		operation == TokenValue::less_equal_tk || operation == TokenValue::bigger_tk || operation == TokenValue::bigger_equal_tk)
+		areRelationshipOperations = true;
+	else if (operation == TokenValue::and_tk || operation == TokenValue::or_tk)
+		areLogicalOperations = true;
+
+
+	// Ранее была допущена ошибка -> тип определить невозможно
+	if (leftPart == TokenValue::none_tk || rightPart == TokenValue::none_tk)
+	{
+		return TokenValue::none_tk;
+	}
+
+	// Целое - целое
+	if (leftPart == TokenValue::integer_tk && rightPart == TokenValue::integer_tk)
+	{
+		if (areRelationshipOperations)
+			return TokenValue::boolean_tk;
+		if (areArithmeticOperations)
+		{
+			if (operation == TokenValue::div_tk)
+				return TokenValue::double_tk;
+			else
+				return TokenValue::integer_tk;
+		}
+	}
+
+	// Целое или вещественное
+	if ((leftPart == TokenValue::integer_tk || leftPart == TokenValue::double_tk) &&
+		(rightPart == TokenValue::integer_tk || rightPart == TokenValue::double_tk))
+	{
+		if (areRelationshipOperations)
+			return TokenValue::boolean_tk;
+		if (areArithmeticOperations)
+			return TokenValue::double_tk;
+	}
+
+	// Конкатенация строк
+	if ((leftPart == TokenValue::char_tk || leftPart == TokenValue::string_tk) &&
+		(rightPart == TokenValue::char_tk || rightPart == TokenValue::string_tk))
+	{
+		if (areRelationshipOperations)
+			return TokenValue::boolean_tk;
+		if (operation == TokenValue::plus_tk)
+			return TokenValue::string_tk;
+	}
+
+	// Логическая операция
+	if (leftPart == TokenValue::boolean_tk && leftPart == rightPart)
+	{
+		if (areRelationshipOperations || areLogicalOperations)
+			return TokenValue::boolean_tk;
+	}
+
+	// Если не нашлось верных вариантов, то выводим сообщение об ошибке
+	string oper = GetKeyByValue(operation);
+	auto error = make_unique<Error>("Несовместимость типов для операции \"" + oper + "\".", operationToken.GetLineNumber(), operationToken.GetStartPosition());
+	SynSemErrors.push_back(move(error));
+	return TokenValue::none_tk;
+}
+
+// Получаем строковое значение оператора
+string GetKeyByValue(TokenValue tValue)
+{
+	string key = "";
+	for (auto& item : KeyTokenValue)
+	{
+		if (item.second == tValue)
+		{
+			key = item.first;
+			break;
+		}
+	}
+	return key;
+}
+#pragma endregion
+
+////////////////////////////////////////////////////
 
 int main()
 {
-	auto t = KeyTokenName;
 	SetConsoleCP(1251);
 	SetConsoleOutputCP(1251);
 
 	thread th(&Lexer::Start, &lexer);
 	th.detach();
 
+	// Вывод токенов
 	/*
 	while (true)
 	{
@@ -452,16 +746,16 @@ int main()
 		if (curToken == NULL)
 			break;
 
-		switch (curToken->GetType())
+		switch (curToken->GetTokenType())
 		{
 			case TokenType::Identifier:
 				cout << "Identifier: " << ((IdentifierToken*)curToken.get())->GetName() << endl;
 				break;
 
 			case TokenType::Operator:
-				for (auto it = KeyTokenName.begin(); it != KeyTokenName.end(); it++)
+				for (auto it = KeyTokenValue.begin(); it != KeyTokenValue.end(); it++)
 				{
-					if (it->second == ((OperatorToken*)curToken.get())->GetName())
+					if (it->second == ((OperatorToken*)curToken.get())->GetValueType())
 					{
 						cout << "Operator: " << it->first << endl;
 						break;
@@ -476,7 +770,7 @@ int main()
 	}
 	*/
 
-	GetToken();
+	GetNextToken();
 	Program();
 
 	// Вывод лексических ошибок
@@ -487,11 +781,11 @@ int main()
 		lexicalErrors[i]->ShowError();
 	}
 
-	// Вывод синтаксических ошибок
-	errorsCount = SyntacticErrors.size();
+	// Вывод синтаксических и семантических ошибок
+	errorsCount = SynSemErrors.size();
 	for (int i = 0; i < errorsCount; i++)
 	{
-		SyntacticErrors[i]->ShowError();
+		SynSemErrors[i]->ShowError();
 	}
 
 	return 0;

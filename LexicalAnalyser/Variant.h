@@ -7,12 +7,9 @@ using namespace Constants;
 
 class Variant
 {
-protected:
-	VariantType Type;
 public:
 	Variant() {}
 	virtual ~Variant() {}
-	VariantType GetType() { return Type; }
 };
 
 class IntegerVariant : public Variant
@@ -23,7 +20,6 @@ public:
 	IntegerVariant(int value)
 	{
 		Value = value;
-		Type = VariantType::integer_type;
 	}
 	~IntegerVariant() {}
 	int GetValue() { return Value; }
@@ -37,7 +33,6 @@ public:
 	DoubleVariant(double value)
 	{
 		Value = value;
-		Type = VariantType::double_type;
 	}
 	~DoubleVariant() {}
 	double GetValue() { return Value; }
@@ -51,7 +46,6 @@ public:
 	StringVariant(string value)
 	{
 		Value = value;
-		Type = VariantType::string_type;
 	}
 	~StringVariant() {}
 	string GetValue() { return Value; }
@@ -65,7 +59,6 @@ public:
 	CharVariant(char value)
 	{
 		Value = value;
-		Type = VariantType::char_type;
 	}
 	~CharVariant() {}
 	char GetValue() { return Value; }
@@ -79,7 +72,6 @@ public:
 	BoolVariant(bool value)
 	{
 		Value = value;
-		Type = VariantType::boolean_type;
 	}
 	~BoolVariant() {}
 	bool GetValue() { return Value; }

@@ -9,24 +9,17 @@ private:
 	string ErrorMsg;
 	int LineNumber;
 	int StartPosition;
-	int EndPosition;
 public:
-	Error(string errorMsg, int lineNumber, int startPosition, int endPosition)
+	Error(string errorMsg, int lineNumber, int startPosition)
 	{
 		ErrorMsg = errorMsg;
 		LineNumber = lineNumber;
 		StartPosition = startPosition;
-		EndPosition = endPosition;
 	}
 	~Error() {}
 
 	void ShowError()
 	{
-		if (StartPosition != EndPosition)
-			cout << ErrorMsg << " Строка " << LineNumber <<
-			", символы " << StartPosition <<" - " << EndPosition << "." << endl;
-		else
-			cout << ErrorMsg << " Строка " << LineNumber <<
-			", символ " << StartPosition << "." << endl;
+		cout << ErrorMsg << " Строка " << LineNumber << ", символ " << StartPosition << "." << endl;
 	}
 };
