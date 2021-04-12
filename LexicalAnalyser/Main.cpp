@@ -1,6 +1,6 @@
 #include "Main.h"
 
-string file = "semantic.txt";
+string file = "lexical.txt";
 Lexer lexer = Lexer(file);
 unique_ptr<Token> curToken;
 int lineNumber = 0, startPos = 0;
@@ -739,7 +739,6 @@ int main()
 	th.detach();
 
 	// Вывод токенов
-	/*
 	while (true)
 	{
 		auto curToken = lexer.GetToken();
@@ -768,10 +767,9 @@ int main()
 				break;
 		}
 	}
-	*/
 
-	GetNextToken();
-	Program();
+	//GetNextToken();
+	//Program();
 
 	// Вывод лексических ошибок
 	auto lexicalErrors = lexer.GetLexicalErrors();

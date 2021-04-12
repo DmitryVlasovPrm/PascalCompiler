@@ -3,7 +3,7 @@
 #include <iostream>
 using namespace std;
 
-static class Error
+class Error
 {
 private:
 	string ErrorMsg;

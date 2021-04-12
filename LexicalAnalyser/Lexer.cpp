@@ -133,7 +133,7 @@ void Lexer::Start()
 							if (pointPos != -1)
 							{
 								isError = true;
-								errorMsg = "Неверный формат числа";
+								errorMsg = "Ошибка: неверный формат числа.";
 							}
 							pointPos = i;
 							continue;
@@ -154,7 +154,7 @@ void Lexer::Start()
 									else
 									{
 										isError = true;
-										errorMsg = "Лексическая ошибка: значение превышает предел.";
+										errorMsg = "Ошибка: значение превышает предел.";
 									}
 								}
 							}
