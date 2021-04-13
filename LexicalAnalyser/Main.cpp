@@ -1,6 +1,6 @@
 #include "Main.h"
 
-string file = "lexical.txt";
+string file = "semantic.txt";
 Lexer lexer = Lexer(file);
 unique_ptr<Token> curToken;
 int lineNumber = 0, startPos = 0;
@@ -175,7 +175,16 @@ void TypeDeclaration()
 		AcceptOper(TokenValue::equal_tk);
 		// Тип
 		auto type = AcceptType();
-		CustomTypes.insert(pair<IdentifierToken, TokenValue>(customTypeName, type));
+		// Был ли определен ранее
+		if (CustomTypes.find(customTypeName) != CustomTypes.end())
+		{
+			auto error = make_unique<Error>("Тип \"" + customTypeName.GetName() + "\" уже определен.", customTypeName.GetLineNumber(), customTypeName.GetStartPosition());
+			SynSemErrors.push_back(move(error));
+		}
+		else
+		{
+			CustomTypes.insert(pair<IdentifierToken, TokenValue>(customTypeName, type));
+		}
 	}
 	catch (const invalid_argument& ex)
 	{
@@ -342,7 +351,7 @@ void Statement()
 		}
 
 		// Простой оператор (оператор присваивания)
-		if (curToken->GetTokenType() == TokenType::Identifier) // Переменная
+		if (curToken != NULL && curToken->GetTokenType() == TokenType::Identifier) // Переменная
 		{
 			auto leftType = CheckIdentifier();
 			GetNextToken();
@@ -354,7 +363,7 @@ void Statement()
 		}
 
 		// Условие if, цикл while, сложный оператор
-		if (curToken->GetTokenType() == TokenType::Operator)
+		if (curToken != NULL && curToken->GetTokenType() == TokenType::Operator)
 		{
 			// Составной оператор
 			if (curToken->GetValueType() == TokenValue::begin_tk)
@@ -458,40 +467,42 @@ TokenValue Multiplier()
 {
 	try
 	{
+		TokenValue type = TokenValue::none_tk;
 		if (curToken == NULL)
-			return TokenValue::none_tk;
+			return type;
 
 		auto tokenType = curToken->GetTokenType();
 		// Переменная
 		if (tokenType == TokenType::Identifier)
 		{
-			auto type = CheckIdentifier();
+			type = CheckIdentifier();
 			GetNextToken();
 			return type;
 		}
 		// Константа без знака
 		if (tokenType == TokenType::Value)
 		{
-			auto type = curToken->GetValueType();
+			type = curToken->GetValueType();
 			GetNextToken();
 			return type;
 		}
-		// (<выражение>) или not <множитель>
 		if (tokenType == TokenType::Operator)
 		{
+			// (<выражение>)
 			if (curToken->GetValueType() == TokenValue::round_open_bracket_tk)
 			{
 				// Выражение
 				GetNextToken();
-				auto type = Expression();
+				type = Expression();
 				AcceptOper(TokenValue::round_close_bracket_tk);
 				return type;
 			}
-			else
+			// not <множитель>
+			if (curToken->GetValueType() == TokenValue::not_tk)
 			{
 				auto notOper = *curToken;
-				AcceptOper(TokenValue::not_tk);
-				auto type = Multiplier();
+				GetNextToken();
+				type = Multiplier();
 				if (type != TokenValue::boolean_tk)
 				{
 					auto error = make_unique<Error>("Несовместимость типов для операции \"not\".", notOper.GetLineNumber(), notOper.GetStartPosition());
@@ -501,6 +512,7 @@ TokenValue Multiplier()
 				return type;
 			}
 		}
+		throw invalid_argument("Неправильная структура множителя.");
 	}
 	catch (const invalid_argument& ex)
 	{
@@ -509,6 +521,7 @@ TokenValue Multiplier()
 		SynSemErrors.push_back(move(error));
 		SkipToVariousTokens(set<TokenValue>(), set<Constants::TokenType>(), set<TokenValue> {TokenValue::mult_tk, TokenValue::div_tk,
 			TokenValue::plus_tk, TokenValue::minus_tk, TokenValue::end_tk, TokenValue::round_open_bracket_tk, TokenValue::semicolon_tk});
+		return TokenValue::none_tk;
 	}
 }
 
@@ -518,7 +531,11 @@ void IfConditional()
 	try
 	{
 		GetNextToken();
-		Expression();
+		auto type = Expression();
+		if (type != TokenValue::boolean_tk)
+		{
+			throw invalid_argument("Ожидался тип boolean.");
+		}
 		AcceptOper(TokenValue::then_tk);
 		Statement();
 		if (curToken->GetValueType() == TokenValue::else_tk)
@@ -542,7 +559,11 @@ void WhileCycle()
 	try
 	{
 		GetNextToken();
-		Expression();
+		auto type = Expression();
+		if (type != TokenValue::boolean_tk)
+		{
+			throw invalid_argument("Ожидался тип boolean.");
+		}
 		AcceptOper(TokenValue::do_tk);
 		Statement();
 	}
@@ -738,6 +759,7 @@ int main()
 	thread th(&Lexer::Start, &lexer);
 	th.detach();
 
+	/*
 	// Вывод токенов
 	while (true)
 	{
@@ -767,9 +789,10 @@ int main()
 				break;
 		}
 	}
+	*/
 
-	//GetNextToken();
-	//Program();
+	GetNextToken();
+	Program();
 
 	// Вывод лексических ошибок
 	auto lexicalErrors = lexer.GetLexicalErrors();
